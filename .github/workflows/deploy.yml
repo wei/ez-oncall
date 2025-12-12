@@ -1,0 +1,25 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy to server
+        uses: appleboy/ssh-action@v1.2.0
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /root/ez-oncall
+            git pull origin master
+            cd NightOwl
+            docker build -t nightowl .
+            docker stop nightowl || true
+            docker rm nightowl || true
+            docker run -d --name nightowl -p 80:3001 --env-file .env nightowl
