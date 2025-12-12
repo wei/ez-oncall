@@ -55,11 +55,33 @@ Run the backend server only:
 npm start
 ```
 
+## Configuration
+
+The application can be configured using environment variables. Copy `.env.example` to `.env` and adjust as needed:
+
+```bash
+cp .env.example .env
+```
+
+### Environment Variables
+
+- `PORT`: Server port (default: 3001)
+- `NODE_ENV`: Environment mode (development/production)
+- `PAYMENT_GATEWAY_TIMEOUT`: Maximum time to wait for payment gateway response in milliseconds (default: 5000)
+- `PAYMENT_GATEWAY_RESPONSE_TIME`: Simulated payment gateway response time in milliseconds (default: 2000)
+- `SENTRY_WEBHOOK_URL`: Optional webhook URL for Sentry alerts
+
 ## API Endpoints
 
 ### POST /api/checkout
 
-Normal checkout endpoint that returns a 500 error to simulate a payment gateway timeout.
+Checkout endpoint that simulates payment gateway integration with configurable timeout handling.
+
+**Configuration:**
+- `PAYMENT_GATEWAY_TIMEOUT`: Maximum time to wait for payment gateway (default: 5000ms)
+- `PAYMENT_GATEWAY_RESPONSE_TIME`: Simulated gateway response time (default: 2000ms)
+
+Set `PAYMENT_GATEWAY_RESPONSE_TIME` higher than `PAYMENT_GATEWAY_TIMEOUT` to simulate timeout errors.
 
 **Request:**
 ```json
@@ -70,7 +92,17 @@ Normal checkout endpoint that returns a 500 error to simulate a payment gateway 
 }
 ```
 
-**Response (500):**
+**Success Response (200):**
+```json
+{
+  "status": "success",
+  "service": "checkout-service",
+  "transactionId": "txn_1234567890_abc123",
+  "message": "Payment processed successfully"
+}
+```
+
+**Error Response (500) - on timeout:**
 ```json
 {
   "status": "error",

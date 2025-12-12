@@ -7,6 +7,8 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3001;
 const WEBHOOK_URL = process.env.SENTRY_WEBHOOK_URL;
+const PAYMENT_GATEWAY_TIMEOUT = parseInt(process.env.PAYMENT_GATEWAY_TIMEOUT || '5000', 10); // Default 5 seconds
+const PAYMENT_GATEWAY_RESPONSE_TIME = parseInt(process.env.PAYMENT_GATEWAY_RESPONSE_TIME || '2000', 10); // Simulated response time
 
 app.use(cors());
 app.use(express.json());
@@ -100,36 +102,76 @@ async function sendAlert(error, context = {}) {
   }
 }
 
+// Simulate payment gateway call with timeout
+async function processPayment(email, movieId, price) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => {
+      reject(new Error('Payment gateway did not respond in time'));
+    }, PAYMENT_GATEWAY_TIMEOUT);
+
+    // Simulate payment processing
+    setTimeout(() => {
+      clearTimeout(timeout);
+      resolve({
+        success: true,
+        transactionId: `txn_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+        email,
+        movieId,
+        price,
+      });
+    }, PAYMENT_GATEWAY_RESPONSE_TIME);
+  });
+}
+
 app.post('/api/checkout', async (req, res) => {
   const { email, movieId, price } = req.body;
 
-  // Create real Error to capture stack trace
-  const error = new Error("CheckoutServiceTimeoutError: Payment gateway did not respond in time");
-  error.name = "CheckoutServiceTimeoutError";
+  try {
+    // Process payment with timeout handling
+    const result = await processPayment(email, movieId, price);
+    
+    console.log({
+      service: "checkout-service",
+      path: "/api/checkout",
+      status: "success",
+      details: { email, movieId, price, transactionId: result.transactionId },
+    });
 
-  console.error({
-    service: "checkout-service",
-    path: "/api/checkout",
-    error: error.message,
-    mode: "soft-fail",
-    details: { email, movieId, price },
-    stack: error.stack,
-  });
+    res.status(200).json({
+      status: "success",
+      service: "checkout-service",
+      transactionId: result.transactionId,
+      message: "Payment processed successfully"
+    });
+  } catch (error) {
+    // Create real Error to capture stack trace
+    const timeoutError = new Error("CheckoutServiceTimeoutError: Payment gateway did not respond in time");
+    timeoutError.name = "CheckoutServiceTimeoutError";
 
-  await sendAlert(error, {
-    level: 'error',
-    culprit: 'checkout-service',
-    path: '/api/checkout',
-    mode: 'soft-fail',
-    request_data: { email, movieId, price },
-  });
+    console.error({
+      service: "checkout-service",
+      path: "/api/checkout",
+      error: timeoutError.message,
+      mode: "soft-fail",
+      details: { email, movieId, price },
+      stack: timeoutError.stack,
+    });
 
-  res.status(500).json({
-    status: "error",
-    service: "checkout-service",
-    code: "CheckoutServiceTimeoutError",
-    message: "Payment gateway did not respond in time"
-  });
+    await sendAlert(timeoutError, {
+      level: 'error',
+      culprit: 'checkout-service',
+      path: '/api/checkout',
+      mode: 'soft-fail',
+      request_data: { email, movieId, price },
+    });
+
+    res.status(500).json({
+      status: "error",
+      service: "checkout-service",
+      code: "CheckoutServiceTimeoutError",
+      message: "Payment gateway did not respond in time"
+    });
+  }
 });
 
 app.post('/api/checkout-hard-crash', async (req, res) => {
@@ -164,6 +206,8 @@ app.post('/api/checkout-hard-crash', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`NightOwl Tickets backend running on port ${PORT}`);
   console.log(`Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`Payment Gateway Timeout: ${PAYMENT_GATEWAY_TIMEOUT}ms`);
+  console.log(`Payment Gateway Response Time: ${PAYMENT_GATEWAY_RESPONSE_TIME}ms`);
 
   if (WEBHOOK_URL) {
     console.log('Webhook alerts: ENABLED');
